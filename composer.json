@@ -6,7 +6,6 @@
     "license": "MIT",
     "require": {
         "php": ">=7.0",
-        "ext-swoole": ">=1.8.9",
         "hanson/vbot": ">=2.0"
     },
     "authors": [
@@ -25,8 +24,8 @@
             "type": "composer",
             "url": "https://packagist.phpcomposer.com"
         }
+    },
+    "require-dev": {
+        "eaglewu/swoole-ide-helper": "dev-master"
     }
 }
-
-
-
