@@ -75,7 +75,7 @@ return $options = [
    ],
    'params'=> [
        'tulingApi'=> 'http://www.tuling123.com/openapi/api',
-       'tulingKey'=> '',
+       'tulingKey'=> '0a1931e44e1e4e339f401029832d31f6',
    ],
 
 ];
