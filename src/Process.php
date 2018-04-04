@@ -27,8 +27,8 @@ class Process
     public function start()
     {
         \Swoole\Process::daemon(true, true);
-        isset($config['swoole']['workNum']) && $this->workNum=$config['swoole']['workNum'];
-
+        isset($this->config['swoole']['workNum']) && $this->workNum = $this->config['swoole']['workNum'];
+        echo '进程数：'.  $this->workNum . "\n";
         //设置主进程
         $ppid     = getmypid();
         $pid_file = $this->config['path'] . self::PID_FILE;
@@ -36,14 +36,16 @@ class Process
             echo "已有进程运行中,请先结束或重启\n";
             die();
         }
-        file_put_contents($pid_file, $ppid);
+        file_put_contents($pid_file, $ppid); //创建进程锁定文件，防止启动进程重复
         $this->setProcessName('job master ' . $ppid . self::PROCESS_NAME_LOG);
 
         //根据配置信息，开启多个进程
         for ($i = 0; $i < $this->workNum; $i++) {
+            echo '正在开启进程：'. $i . "\n";
             $this->reserveBot($i);
             sleep(2);
         }
+        echo "开启多个进程完毕" . "\n";
         $this->registSignal($this->workers);
     }
 
@@ -72,9 +74,12 @@ class Process
     //监控子进程
     public function registSignal(&$workers)
     {
+        //监听到信号为 SIGTERM 表示终止主进程，执行强制终止进程的方法
         \Swoole\Process::signal(SIGTERM, function ($signo) {
             $this->setExit();
         });
+
+        //监听到信号为 SIGCHLD 表示子进程退出，执行回收僵尸进程，防止浪费进程资源
         \Swoole\Process::signal(SIGCHLD, function ($signo) use (&$workers) {
             while (true) {
                 $ret = \Swoole\Process::wait(false);
@@ -95,7 +100,7 @@ class Process
 
     private function setExit()
     {
-        @unlink($this->config['path'] . self::PID_FILE);
+        @unlink($this->config['path'] . self::PID_FILE); //删除主进程锁定文件
         $this->logger->log('Time: ' . microtime(true) . '主进程退出' . "\n");
         foreach ($this->workers as $pid => $worker) {
             //平滑退出，用exit；强制退出用kill
