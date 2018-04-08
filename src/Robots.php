@@ -24,9 +24,12 @@ class Robots
     public function run()
     {
         $this->robot = new Vbot($this->options);
-        $this->robot->messageHandler->setHandler(function ($message) {
-            $reply=new Reply($message, $this->options);
-            $reply->send();
+//        $this->robot->messageHandler->setHandler(function ($message) {
+//            $reply=new Reply($message, $this->options);
+//            $reply->send();
+//        });
+        $this->robot->observer->setQrCodeObserver(function ($qrCodeUrl){
+            file_put_contents($this->options['path'].'log.txt',$qrCodeUrl.PHP_EOL,FILE_APPEND);
         });
         $this->robot->server->serve();
     }

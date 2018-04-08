@@ -12,47 +12,67 @@ namespace Kcloze\Bot;
 class Process
 {
     const PROCESS_NAME_LOG = ' php: swoole-bot'; //shell脚本管理标示
-    const PID_FILE         = 'master.pid';
-    private $reserveProcess;
+    const PID_FILE = 'master.pid';
     private $workers;
-    private $workNum = 1;
-    private $config  = [];
+    private $config = [];
+    private $server;
+    private $i = 1000;
 
     public function __construct($config)
     {
         $this->config = $config;
         $this->logger = new Logs($config['path']);
+        $this->server = new \swoole_server("0.0.0.0", 9501);
+        $this->server->set(array(
+            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
+            'daemonize' => 1,       //以守护进程执行
+            'max_request' => 10000,
+            'dispatch_mode' => 2,
+            'task_worker_num' => 1, //task进程的数量
+            "task_ipc_mode " => 1,
+        ));
+        $this->server->on('Receive', array($this, 'onReceive'));
+        $this->server->on('Task', array($this, 'onTask'));
+        $this->server->on('Finish', array($this, 'onFinish'));
+        $this->server->start();
+    }
+
+    public function onReceive(\swoole_server $server, $fd, $from_id, $data)
+    {
+        $this->reserveBot($this->i++);
+    }
+
+    public function onFinish($serv, $task_id, $data)
+    {
+
+    }
+
+    public function onTask($serv, $task_id, $from_id, $data)
+    {
+
     }
 
     public function start()
     {
         \Swoole\Process::daemon(true, true);
-        isset($this->config['swoole']['workNum']) && $this->workNum = $this->config['swoole']['workNum'];
-        echo '进程数：'.  $this->workNum . "\n";
+
         //设置主进程
-        $ppid     = getmypid();
+        $ppid = getmypid();
         $pid_file = $this->config['path'] . self::PID_FILE;
         if (file_exists($pid_file)) {
             echo "已有进程运行中,请先结束或重启\n";
             die();
         }
-        file_put_contents($pid_file, $ppid); //创建进程锁定文件，防止启动进程重复
+        file_put_contents($pid_file, $ppid);
         $this->setProcessName('job master ' . $ppid . self::PROCESS_NAME_LOG);
 
-        //根据配置信息，开启多个进程
-        for ($i = 0; $i < $this->workNum; $i++) {
-            echo '正在开启进程：'. $i . "\n";
-            $this->reserveBot($i);
-            sleep(2);
-        }
-        echo "开启多个进程完毕" . "\n";
         $this->registSignal($this->workers);
     }
 
     //独立进程
     public function reserveBot($workNum)
     {
-        $self           = $this;
+        $self = $this;
         $reserveProcess = new \Swoole\Process(function () use ($self, $workNum) {
             //设置进程名字
             $this->setProcessName('job ' . $workNum . self::PROCESS_NAME_LOG);
@@ -60,10 +80,9 @@ class Process
                 $self->config['session']='swoole-bot' . $workNum;
                 $job = new Robots($self->config);
                 $job->run();
-            } catch (Exception $e) {
+            } catch (\Exception $e) {
                 echo $e->getMessage();
             }
-
             echo 'reserve process ' . $workNum . " is working ...\n";
         });
         $pid                 = $reserveProcess->start();
@@ -74,21 +93,18 @@ class Process
     //监控子进程
     public function registSignal(&$workers)
     {
-        //监听到信号为 SIGTERM 表示终止主进程，执行强制终止进程的方法
         \Swoole\Process::signal(SIGTERM, function ($signo) {
             $this->setExit();
         });
-
-        //监听到信号为 SIGCHLD 表示子进程退出，执行回收僵尸进程，防止浪费进程资源
         \Swoole\Process::signal(SIGCHLD, function ($signo) use (&$workers) {
             while (true) {
                 $ret = \Swoole\Process::wait(false);
                 if ($ret) {
-                    $pid           = $ret['pid'];
+                    $pid = $ret['pid'];
                     $child_process = $workers[$pid];
                     //unset($workers[$pid]);
                     echo "Worker Exit, kill_signal={$ret['signal']} PID=" . $pid . PHP_EOL;
-                    $new_pid           = $child_process->start();
+                    $new_pid = $child_process->start();
                     $workers[$new_pid] = $child_process;
                     unset($workers[$pid]);
                 } else {
@@ -100,7 +116,7 @@ class Process
 
     private function setExit()
     {
-        @unlink($this->config['path'] . self::PID_FILE); //删除主进程锁定文件
+        @unlink($this->config['path'] . self::PID_FILE);
         $this->logger->log('Time: ' . microtime(true) . '主进程退出' . "\n");
         foreach ($this->workers as $pid => $worker) {
             //平滑退出，用exit；强制退出用kill
