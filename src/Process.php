@@ -9,6 +9,10 @@
 
 namespace Kcloze\Bot;
 
+use Hanson\Vbot\Exceptions\FetchUuidException;
+use Hanson\Vbot\Foundation\Vbot;
+use Symfony\Component\Debug\Exception\FatalErrorException;
+
 class Process
 {
     const PROCESS_NAME_LOG = ' php: swoole-bot'; //shell脚本管理标示
@@ -17,29 +21,27 @@ class Process
     private $config = [];
     private $server;
     private $i = 1000;
+    private $robot;
+    protected $qrCodeUrl;
+    private $fd;
 
     public function __construct($config)
     {
         $this->config = $config;
         $this->logger = new Logs($config['path']);
         $this->server = new \swoole_server("0.0.0.0", 9501);
-        $this->server->set(array(
-            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
-            'daemonize' => 1,       //以守护进程执行
-            'max_request' => 10000,
-            'dispatch_mode' => 2,
-            'task_worker_num' => 1, //task进程的数量
-            "task_ipc_mode " => 1,
-        ));
-        $this->server->on('Receive', array($this, 'onReceive'));
-        $this->server->on('Task', array($this, 'onTask'));
-        $this->server->on('Finish', array($this, 'onFinish'));
-        $this->server->start();
+        $this->robot  = new Vbot($this->config);
     }
 
-    public function onReceive(\swoole_server $server, $fd, $from_id, $data)
+    public function onReceive(\swoole_server $server, $fd, $reactor_id, $data)
     {
-        $this->reserveBot($this->i++);
+       $this->reserveBot($this->i++);
+       $this->fd = $fd;
+       $uuid = $this->getUuid();
+       $url = 'https://login.weixin.qq.com/l/'. $uuid;
+       $server -> send($fd, $url);
+       $this->waitForLogin();
+       $this->getLogin();
     }
 
     public function onFinish($serv, $task_id, $data)
@@ -52,23 +54,31 @@ class Process
 
     }
 
+
+    //启动tcp server服务
     public function start()
     {
-        \Swoole\Process::daemon(true, true);
-
-        //设置主进程
-        $ppid = getmypid();
-        $pid_file = $this->config['path'] . self::PID_FILE;
-        if (file_exists($pid_file)) {
-            echo "已有进程运行中,请先结束或重启\n";
-            die();
-        }
-        file_put_contents($pid_file, $ppid);
-        $this->setProcessName('job master ' . $ppid . self::PROCESS_NAME_LOG);
-
-        $this->registSignal($this->workers);
+        $this->server->set(array(
+            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
+            'daemonize' => 1,       //以守护进程执行
+            'max_request' => 10000,
+            'dispatch_mode' => 2,
+            'task_worker_num' => 1, //task进程的数量
+            "task_ipc_mode " => 1,
+        ));
+        $this->setProcessName('job server ' . self::PROCESS_NAME_LOG);
+        $this->server->on('Receive', array($this, 'onReceive'));
+        $this->server->on('Task', array($this, 'onTask'));
+        $this->server->on('Finish', array($this, 'onFinish'));
+        $this->server->start();
     }
 
+    /**
+     * 创建机器人
+     * @param $workNum
+     * @param $server
+     * @param $fd
+     */
     //独立进程
     public function reserveBot($workNum)
     {
@@ -77,17 +87,18 @@ class Process
             //设置进程名字
             $this->setProcessName('job ' . $workNum . self::PROCESS_NAME_LOG);
             try {
-                $self->config['session']='swoole-bot' . $workNum;
+                $self->config['session'] = 'swoole-bot' . $workNum;
                 $job = new Robots($self->config);
                 $job->run();
+//                $self->robot->server->login();
+//                $this->logger->log('reserve process ' . $workNum . " is working ...\n", 'info');
             } catch (\Exception $e) {
                 echo $e->getMessage();
             }
-            echo 'reserve process ' . $workNum . " is working ...\n";
         });
-        $pid                 = $reserveProcess->start();
+        $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
-        echo "reserve start...\n";
+        $this->logger->log("reserve start..." . PHP_EOL);
     }
 
     //监控子进程
@@ -139,5 +150,112 @@ class Process
         if (function_exists('swoole_set_process_name') && PHP_OS !== 'Darwin') {
             swoole_set_process_name($name);
         }
+    }
+
+    /**
+     * 获取微信登录uuid
+     */
+    public function getUuid()
+    {
+        $content = $this->robot->http->get('https://login.weixin.qq.com/jslogin', ['query' => [
+            'appid' => 'wx782c26e4c19acffb',
+            'fun'   => 'new',
+            'lang'  => 'zh_CN',
+            '_'     => time(),
+        ]]);
+
+        preg_match('/window.QRLogin.code = (\d+); window.QRLogin.uuid = \"(\S+?)\"/', $content, $matches);
+
+        if (!$matches) {
+            $this->server->send($this->fd, ' 打开微信二维码失败');
+            return false;
+        }
+
+        return $this->config['server.uuid'] = $matches[2];
+    }
+
+    /**
+     *
+     */
+    protected function waitForLogin()
+    {
+        $retryTime = 10;
+        $tip = 1;
+
+        $this->server->send($this->fd, 'please scan the qrCode with wechat.');
+        while ($retryTime > 0) {
+            $url = sprintf('https://login.weixin.qq.com/cgi-bin/mmwebwx-bin/login?tip=%s&uuid=%s&_=%s', $tip, $this->robot->config['server.uuid'], time());
+
+            $content = $this->robot->http->get($url, ['timeout' => 35]);
+
+            preg_match('/window.code=(\d+);/', $content, $matches);
+
+            $code = $matches[1];
+            switch ($code) {
+                case '201':
+                    $this->robot->console->log('please confirm login in wechat.');
+                    $tip = 0;
+                    break;
+                case '200':
+                    preg_match('/window.redirect_uri="(https:\/\/(\S+?)\/\S+?)";/', $content, $matches);
+
+                    $this->robot->config['server.uri.redirect'] = $matches[1].'&fun=new';
+                    $url = 'https://%s/cgi-bin/mmwebwx-bin';
+                    $this->robot->config['server.uri.file'] = sprintf($url, 'file.'.$matches[2]);
+                    $this->robot->config['server.uri.push'] = sprintf($url, 'webpush.'.$matches[2]);
+                    $this->robot->config['server.uri.base'] = sprintf($url, $matches[2]);
+
+                    return;
+                case '408':
+                    $tip = 1;
+                    $retryTime -= 1;
+                    sleep(1);
+                    break;
+                default:
+                    $tip = 1;
+                    $retryTime -= 1;
+                    sleep(1);
+                    break;
+            }
+        }
+        $this->server->send($this->fd, 'login time out!');
+    }
+
+    /*
+     * 获取登录信息
+     */
+    private function getLogin()
+    {
+        $content = $this->robot->http->get($this->robot->config['server.uri.redirect']);
+
+        $data = (array) simplexml_load_string($content, 'SimpleXMLElement', LIBXML_NOCDATA);
+
+        $this->robot->config['server.skey'] = $data['skey'];
+        $this->robot->config['server.sid'] = $data['wxsid'];
+        $this->robot->config['server.uin'] = $data['wxuin'];
+        $this->robot->config['server.passTicket'] = $data['pass_ticket'];
+
+        if (in_array('', [$data['wxsid'], $data['wxuin'], $data['pass_ticket']])) {
+            $this->server->send($this->fd, 'login fail');
+        }
+
+        $this->robot->config['server.deviceId'] = 'e'.substr(mt_rand().mt_rand(), 1, 15);
+
+        $this->robot->config['server.baseRequest'] = [
+            'Uin'      => $data['wxuin'],
+            'Sid'      => $data['wxsid'],
+            'Skey'     => $data['skey'],
+            'DeviceID' => $this->robot->config['server.deviceId'],
+        ];
+
+        $this->saveServer();
+    }
+
+    /**
+     * 保存登录信息
+     */
+    private function saveServer()
+    {
+        $this->robot->cache->forever('session.'.$this->robot->config['session'], json_encode($this->robot->config['server']));
     }
 }

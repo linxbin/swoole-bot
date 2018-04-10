@@ -7,13 +7,15 @@
  */
 
 namespace qiu\kc;
+use Hanson\Vbot\Console\QrCode;
+
 class client
 {
     private $client;
 
     public function __construct()
     {
-        $this->client = new \swoole_client(SWOOLE_SOCK_TCP);
+        $this->client = new \swoole_client(SWOOLE_SOCK_TCP | SWOOLE_KEEP);
     }
 
     public function connect()
@@ -50,7 +52,9 @@ class client
 $client = new client();
 try {
     $client->connect();
-    $client->send(array());
+    $client->send('child');
+    $data = $client->received();
+    var_dump($data);
 } catch (\Exception $e) {
     echo $e;
 }
