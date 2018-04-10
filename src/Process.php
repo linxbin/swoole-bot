@@ -29,27 +29,38 @@ class Process
     {
         $this->config = $config;
         $this->logger = new Logs($config['path']);
-        $this->server = new \swoole_server("0.0.0.0", 9501);
+        $this->server = new \swoole_websocket_server("0.0.0.0", 9501);
         $this->robot  = new Vbot($this->config);
     }
 
-    public function onReceive(\swoole_server $server, $fd, $reactor_id, $data)
+    public function onMessage(\swoole_server $server, \swoole_websocket_frame  $frame)
     {
        $this->reserveBot($this->i++);
-       $this->fd = $fd;
+       $this->fd = $frame->fd;
        $uuid = $this->getUuid();
        $url = 'https://login.weixin.qq.com/l/'. $uuid;
-       $server -> send($fd, $url);
+       $this->server->push($frame->fd, $url);
        $this->waitForLogin();
        $this->getLogin();
     }
 
-    public function onFinish($serv, $task_id, $data)
+
+    public function close($serv, $task_id, $from_id, $data)
     {
 
     }
 
-    public function onTask($serv, $task_id, $from_id, $data)
+    public function onOpen(\swoole_websocket_server $server, $request)
+    {
+
+    }
+
+    public function onTask(\swoole_server $serv, int $task_id, int $src_worker_id, mixed $data)
+    {
+
+    }
+
+    public function onFinish(\swoole_server $serv, int $task_id, string $data)
     {
 
     }
@@ -67,9 +78,11 @@ class Process
             "task_ipc_mode " => 1,
         ));
         $this->setProcessName('job server ' . self::PROCESS_NAME_LOG);
-        $this->server->on('Receive', array($this, 'onReceive'));
-        $this->server->on('Task', array($this, 'onTask'));
-        $this->server->on('Finish', array($this, 'onFinish'));
+        $this->server->on('open', array($this, 'onOpen'));
+        $this->server->on('message', array($this, 'onMessage'));
+        $this->server->on('close', array($this, 'close'));
+        $this->server->on('task', array($this, 'onTask'));
+        $this->server->on('finish', array($this, 'onFinish'));
         $this->server->start();
     }
 
@@ -218,7 +231,7 @@ class Process
                     break;
             }
         }
-        $this->server->send($this->fd, 'login time out!');
+        $this->server->push($this->fd, 'login time out!');
     }
 
     /*
@@ -236,7 +249,7 @@ class Process
         $this->robot->config['server.passTicket'] = $data['pass_ticket'];
 
         if (in_array('', [$data['wxsid'], $data['wxuin'], $data['pass_ticket']])) {
-            $this->server->send($this->fd, 'login fail');
+            $this->server->push($this->fd, 'login fail');
         }
 
         $this->robot->config['server.deviceId'] = 'e'.substr(mt_rand().mt_rand(), 1, 15);

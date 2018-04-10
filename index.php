@@ -15,7 +15,7 @@
 </body>
 <script>
     var msg = document.getElementById("msg");
-    var wsServer = "ws://192.168.42.133:9502";
+    var wsServer = "ws://192.168.42.133:9501";
     //调用websocket对象建立连接：
     //参数：ws/wss(加密)：//ip:port （字符串）
     var websocket = new WebSocket(wsServer);
