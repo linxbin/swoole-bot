@@ -59,7 +59,7 @@ class Process
     public function start() {
         $this->server->set(array(
             'worker_num' => 1,      // 一般设置为服务器CPU数的1-4倍
-            'daemonize' => 1,       // 以守护进程执行
+//            'daemonize' => 1,       // 以守护进程执行
             'max_request' => 10000,
             'dispatch_mode' => 2,
             'task_worker_num' => 1, // task进程的数量
@@ -95,10 +95,10 @@ class Process
                 $reply=new Reply($message, $this->config);
                 $reply->send();
             });
-            $this->vbot->server->init();
+            $this->init();
             $this->vbot->messageHandler->listen();
         });
-        $reserveProcess->name('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
+        $this->setProcessName('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
         $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
     }
@@ -228,7 +228,6 @@ class Process
             $this->send($data['message'], 'msg');
             return ;
         }
-        $this->send($data['message'], 'msg');
         $this->vbot->config['server.skey'] = $data['skey'];
         $this->vbot->config['server.sid'] = $data['wxsid'];
         $this->vbot->config['server.uin'] = $data['wxuin'];
@@ -269,5 +268,41 @@ class Process
         ];
 
         $this->server->push($this->fd, json_encode($data));
+    }
+
+
+    /**
+
+     */
+    protected function init($first = true)
+    {
+        $url = $this->vbot->config['server.uri.base'].'/webwxinit?r='.time();
+
+        $result = $this->vbot->http->json($url, [
+            'BaseRequest' => $this->vbot->config['server.baseRequest'],
+        ], true);
+
+        $this->generateSyncKey($result, $first);
+
+        $this->vbot->myself->init($result['User']);
+        $this->vbot->loginSuccessObserver->trigger();
+        $this->vbot->contactFactory->fetchAll();
+    }
+
+    public function generateSyncKey($result, $first)
+    {
+        $this->vbot->config['server.syncKey'] = $result['SyncKey'];
+
+        $syncKey = [];
+
+        if (is_array($this->vbot->config['server.syncKey.List'])) {
+            foreach ($this->vbot->config['server.syncKey.List'] as $item) {
+                $syncKey[] = $item['Key'].'_'.$item['Val'];
+            }
+        } elseif ($first) {
+            $this->init(false);
+        }
+
+        $this->vbot->config['server.syncKeyStr'] = implode('|', $syncKey);
     }
 }
