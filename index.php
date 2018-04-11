@@ -1,7 +1,7 @@
-<html>
-<h1>主控登录</h1>
-<a href="client.php"> 登录</a>
-</html>
+<!--<html>-->
+
+<!--<a href="client.php"> 登录</a>-->
+<!--</html>-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,12 +9,15 @@
     <title>Title</title>
 </head>
 <body>
-<div id="msg"></div>
-<input type="text" id="text">
-<input type="submit" value="发送数据" onclick="song()">
+<h1>主控登录</h1>
+<input hidden type="text" id="text">
+<img id="img" src=""/>
+<div id="msg"> 网络连接中....</div>
+<input type="submit" value="登录" onclick="song()">
 </body>
 <script>
     var msg = document.getElementById("msg");
+    var img = document.getElementById("img");
     var wsServer = "ws://192.168.42.133:9501";
     //调用websocket对象建立连接：
     //参数：ws/wss(加密)：//ip:port （字符串）
@@ -28,7 +31,10 @@
         CLOSING 2   The connection is in the process of closing.
         CLOSED  3   The connection is closed or couldn't be opened.
         */
-        msg.innerHTML = websocket.readyState;
+        if(websocket.readyState == 1) {
+            msg.innerHTML = '连接成功！';
+        }
+
     };
 
     function song(){
@@ -44,7 +50,14 @@
 
     //onmessage 监听服务器数据推送
     websocket.onmessage = function (evt) {
-        msg.innerHTML += evt.data +'<br>';
+        var result =  JSON.parse(evt.data);
+        if(result.type == 'msg') {
+            msg.innerHTML = result.data +'<br>';
+        }
+        if(result.type == 'url') {
+            img.src = 'http://qr.liantu.com/api.php?text=' + result.data;
+        }
+
 //        console.log('Retrieved data from server: ' + evt.data);
     };
     //监听连接错误信息

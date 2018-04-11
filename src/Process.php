@@ -35,13 +35,14 @@ class Process
 
     public function onMessage(\swoole_server $server, \swoole_websocket_frame  $frame)
     {
-       $this->reserveBot($this->i++);
-       $this->fd = $frame->fd;
-       $uuid = $this->getUuid();
-       $url = 'https://login.weixin.qq.com/l/'. $uuid;
-       $this->server->push($frame->fd, $url);
-       $this->waitForLogin();
-       $this->getLogin();
+//       $this->reserveBot($this->i++);
+        $this->fd = $frame->fd;
+        $uuid = $this->getUuid();
+        $url = 'https://login.weixin.qq.com/l/'. $uuid;
+        $this->send($url, 'url');
+        $this->waitForLogin();
+        $this->getLogin();
+
     }
 
 
@@ -69,20 +70,20 @@ class Process
     //启动tcp server服务
     public function start()
     {
-        $this->server->set(array(
-            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
-            'daemonize' => 1,       //以守护进程执行
-            'max_request' => 10000,
-            'dispatch_mode' => 2,
-            'task_worker_num' => 1, //task进程的数量
-            "task_ipc_mode " => 1,
-        ));
+//        $this->server->set(array(
+//            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
+//            'daemonize' => 1,       //以守护进程执行
+//            'max_request' => 10000,
+//            'dispatch_mode' => 2,
+//            'task_worker_num' => 1, //task进程的数量
+//            "task_ipc_mode " => 1,
+//        ));
         $this->setProcessName('job server ' . self::PROCESS_NAME_LOG);
         $this->server->on('open', array($this, 'onOpen'));
         $this->server->on('message', array($this, 'onMessage'));
         $this->server->on('close', array($this, 'close'));
-        $this->server->on('task', array($this, 'onTask'));
-        $this->server->on('finish', array($this, 'onFinish'));
+//        $this->server->on('task', array($this, 'onTask'));
+//        $this->server->on('finish', array($this, 'onFinish'));
         $this->server->start();
     }
 
@@ -192,12 +193,12 @@ class Process
      */
     protected function waitForLogin()
     {
-        $retryTime = 10;
+        $retryTime = 60;
         $tip = 1;
 
-        $this->server->send($this->fd, 'please scan the qrCode with wechat.');
+        $this->send('please scan the qrCode with wechat.', 'msg');
         while ($retryTime > 0) {
-            $url = sprintf('https://login.weixin.qq.com/cgi-bin/mmwebwx-bin/login?tip=%s&uuid=%s&_=%s', $tip, $this->robot->config['server.uuid'], time());
+            $url = sprintf('https://login.weixin.qq.com/cgi-bin/mmwebwx-bin/login?tip=%s&uuid=%s&_=%s', $tip, $this->config['server.uuid'], time());
 
             $content = $this->robot->http->get($url, ['timeout' => 35]);
 
@@ -206,17 +207,17 @@ class Process
             $code = $matches[1];
             switch ($code) {
                 case '201':
-                    $this->robot->console->log('please confirm login in wechat.');
+                    $this->send('please confirm login in wechat.', 'msg');
                     $tip = 0;
                     break;
                 case '200':
                     preg_match('/window.redirect_uri="(https:\/\/(\S+?)\/\S+?)";/', $content, $matches);
 
-                    $this->robot->config['server.uri.redirect'] = $matches[1].'&fun=new';
+                    $this->config['server.uri.redirect'] = $matches[1].'&fun=new';
                     $url = 'https://%s/cgi-bin/mmwebwx-bin';
-                    $this->robot->config['server.uri.file'] = sprintf($url, 'file.'.$matches[2]);
-                    $this->robot->config['server.uri.push'] = sprintf($url, 'webpush.'.$matches[2]);
-                    $this->robot->config['server.uri.base'] = sprintf($url, $matches[2]);
+                    $this->config['server.uri.file'] = sprintf($url, 'file.'.$matches[2]);
+                    $this->config['server.uri.push'] = sprintf($url, 'webpush.'.$matches[2]);
+                    $this->config['server.uri.base'] = sprintf($url, $matches[2]);
 
                     return;
                 case '408':
@@ -231,7 +232,7 @@ class Process
                     break;
             }
         }
-        $this->server->push($this->fd, 'login time out!');
+        $this->send('login time out!', 'msg');
     }
 
     /*
@@ -239,26 +240,26 @@ class Process
      */
     private function getLogin()
     {
-        $content = $this->robot->http->get($this->robot->config['server.uri.redirect']);
+        $content = $this->robot->http->get($this->config['server.uri.redirect']);
 
         $data = (array) simplexml_load_string($content, 'SimpleXMLElement', LIBXML_NOCDATA);
 
-        $this->robot->config['server.skey'] = $data['skey'];
-        $this->robot->config['server.sid'] = $data['wxsid'];
-        $this->robot->config['server.uin'] = $data['wxuin'];
-        $this->robot->config['server.passTicket'] = $data['pass_ticket'];
+        $this->config['server.skey'] = $data['skey'];
+        $this->config['server.sid'] = $data['wxsid'];
+        $this->config['server.uin'] = $data['wxuin'];
+        $this->config['server.passTicket'] = $data['pass_ticket'];
 
         if (in_array('', [$data['wxsid'], $data['wxuin'], $data['pass_ticket']])) {
-            $this->server->push($this->fd, 'login fail');
+            $this->send('login fail ', 'msg');
         }
 
-        $this->robot->config['server.deviceId'] = 'e'.substr(mt_rand().mt_rand(), 1, 15);
+        $this->config['server.deviceId'] = 'e'.substr(mt_rand().mt_rand(), 1, 15);
 
-        $this->robot->config['server.baseRequest'] = [
+        $this->config['server.baseRequest'] = [
             'Uin'      => $data['wxuin'],
             'Sid'      => $data['wxsid'],
             'Skey'     => $data['skey'],
-            'DeviceID' => $this->robot->config['server.deviceId'],
+            'DeviceID' => $this->config['server.deviceId'],
         ];
 
         $this->saveServer();
@@ -269,6 +270,21 @@ class Process
      */
     private function saveServer()
     {
-        $this->robot->cache->forever('session.'.$this->robot->config['session'], json_encode($this->robot->config['server']));
+        $this->robot->cache->forever('session.'.$this->config['session'], json_encode($this->config['server']));
+    }
+
+    /**
+     * 推送消息
+     * @param $data
+     * @param $type
+     */
+    public function send($data, $type)
+    {
+        $data = [
+            'type' => $type,
+            'data' => $data
+        ];
+
+        $this->server->push($this->fd, json_encode($data));
     }
 }
