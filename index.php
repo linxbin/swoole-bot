@@ -9,7 +9,7 @@
     <title>Title</title>
 </head>
 <body>
-<h1>主控登录</h1>
+<h1>我要变机器人</h1>
 <input hidden type="text" id="text">
 <img id="img" src=""/>
 <div id="msg"> 网络连接中....</div>

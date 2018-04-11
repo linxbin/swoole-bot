@@ -11,18 +11,15 @@ namespace Kcloze\Bot;
 
 use Hanson\Vbot\Foundation\Vbot;
 
-class Robots
-{
+class Robots {
     private $robot;
     private $options;
 
-    public function __construct($options)
-    {
+    public function __construct($options) {
         $this->options =$options;
     }
 
-    public function run()
-    {
+    public function run() {
         $this->robot = new Vbot($this->options);
 //        $this->robot->messageHandler->setHandler(function ($message) {
 //            $reply=new Reply($message, $this->options);
