@@ -57,14 +57,15 @@ class Process
 
     //启动tcp server服务
     public function start() {
-//        $this->server->set(array(
-//            'worker_num' => 1,      //一般设置为服务器CPU数的1-4倍
-//            'daemonize' => 1,       //以守护进程执行
-//            'max_request' => 10000,
-//            'dispatch_mode' => 2,
-//            'task_worker_num' => 1, //task进程的数量
-//            "task_ipc_mode " => 1,
-//        ));
+        $this->server->set(array(
+            'worker_num' => 1,      // 一般设置为服务器CPU数的1-4倍
+            'daemonize' => 1,       // 以守护进程执行
+            'max_request' => 10000,
+            'dispatch_mode' => 2,
+            'task_worker_num' => 1, // task进程的数量
+            "task_ipc_mode " => 1,
+            'heartbeat_check_interval ' => 60, // 心跳检测，超过60秒没有发送数据请求将会被强制关闭连接
+        ));
         $this->setProcessName('job server ' . self::PROCESS_NAME_LOG);
         $this->server->on('open', array($this, 'onOpen'));
         $this->server->on('message', array($this, 'onMessage'));
@@ -72,6 +73,7 @@ class Process
         $this->server->on('task', array($this, 'onTask'));
         $this->server->on('finish', array($this, 'onFinish'));
         $this->server->start();
+        $this->server->heartbeat(true);
     }
 
     /**
@@ -99,10 +101,9 @@ class Process
         $reserveProcess->name('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
         $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
-//        $this->registSignal($this->workers);
     }
 
-    //监控子进程
+    // 监控子进程
     public function registSignal(&$workers) {
         \Swoole\Process::signal(SIGTERM, function ($signo) {
             $this->setExit();
@@ -113,7 +114,7 @@ class Process
                 if ($ret) {
                     $pid = $ret['pid'];
                     $child_process = $workers[$pid];
-                    //unset($workers[$pid]);
+                    // unset($workers[$pid]);
                     echo "Worker Exit, kill_signal={$ret['signal']} PID=" . $pid . PHP_EOL;
                     $new_pid = $child_process->start();
                     $workers[$new_pid] = $child_process;
@@ -129,7 +130,7 @@ class Process
         @unlink($this->config['path'] . self::PID_FILE);
         $this->logger->log('Time: ' . microtime(true) . '主进程退出' . "\n");
         foreach ($this->workers as $pid => $worker) {
-            //平滑退出，用exit；强制退出用kill
+            // 平滑退出，用exit；强制退出用kill
             \Swoole\Process::kill($pid);
             unset($this->workers[$pid]);
             $this->logger->log('主进程收到退出信号,[' . $pid . ']子进程跟着退出');
@@ -144,7 +145,7 @@ class Process
      * @param mixed $name
      */
     private function setProcessName($name) {
-        //mac os不支持进程重命名
+        // mac os不支持进程重命名
         if (function_exists('swoole_set_process_name') && PHP_OS !== 'Darwin') {
             swoole_set_process_name($name);
         }
