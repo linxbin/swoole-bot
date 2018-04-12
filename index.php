@@ -10,18 +10,25 @@
 </head>
 <body>
 <h1>我要变机器人</h1>
-<input hidden type="text" id="text">
+<input hidden name="text"  type="text" id="text" />
 <img id="img" src=""/>
 <div id="msg"> 网络连接中....</div>
 <input type="submit" value="登录" onclick="song()">
+<div>
+    <select style="width:200px" name="groups" id="groups" >
+
+    </select>
+</div>
 </body>
 <script>
-    var msg = document.getElementById("msg");
-    var img = document.getElementById("img");
-    var wsServer = "ws://192.168.42.133:9501";
-    //调用websocket对象建立连接：
-    //参数：ws/wss(加密)：//ip:port （字符串）
-    var websocket = new WebSocket(wsServer);
+    var msg         = document.getElementById("msg");
+    var img         = document.getElementById("img");
+    var groups      = document.getElementById('groups');
+    var wsServer    = "ws://192.168.42.133:9501";
+
+    // 调用websocket对象建立连接：
+    // 参数：ws/wss(加密)：//ip:port （字符串）
+    var websocket   = new WebSocket(wsServer);
     //onopen监听连接打开
     websocket.onopen = function (evt) {
         //websocket.readyState 属性：
@@ -57,6 +64,16 @@
         if(result.type == 'url') {
             img.src = 'http://qr.liantu.com/api.php?text=' + result.data;
         }
+        if(result.type == 'groups') {
+            var data = result.data;
+            for(var i = 0 , l = data.length; i < l ; i++) {
+                var op = document.createElement("option");
+                op.setAttribute("value",data[i].UserName);
+                op.setAttribute("name",data[i].NickName);
+            }
+            groups.appendChild(op);
+        }
+
 
 //        console.log('Retrieved data from server: ' + evt.data);
     };
@@ -64,6 +81,5 @@
     //    websocket.onerror = function (evt, e) {
     //        console.log('Error occured: ' + evt.data);
     //    };
-
 </script>
 </html>

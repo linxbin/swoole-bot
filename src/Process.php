@@ -9,6 +9,7 @@
 
 namespace Kcloze\Bot;
 
+use Hanson\Vbot\Core\ApiExceptionHandler;
 use Hanson\Vbot\Exceptions\FetchUuidException;
 use Hanson\Vbot\Foundation\Vbot;
 use Symfony\Component\Debug\Exception\FatalErrorException;
@@ -91,13 +92,28 @@ class Process
             $this->send($url, 'url');
             $this->waitForLogin();
             $this->getLogin();
+
+            // 发送消息，收到消息时触发
             $this->vbot->messageHandler->setHandler(function ($message) {
                 $reply=new Reply($message, $this->config);
                 $reply->send();
             });
+
+            // 获取用户群数据，并推送到前端
+//            $this->vbot->observer->setFetchContactObserver(function(array $contacts){
+//                if(empty($contacts['groups'])) {
+//                    $groups =  $this->formatGroupsInfo( $this->vbot->groups->toArray());
+//                    $this->send($groups, 'groups');
+//                }
+//            });
+
+            // 初始化用户
             $this->init();
+
+            // 消息监听
             $this->vbot->messageHandler->listen();
         });
+
         $this->setProcessName('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
         $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
@@ -272,7 +288,8 @@ class Process
 
 
     /**
-
+     * 登录成功后初始化用户数据
+     * @param bool $first
      */
     protected function init($first = true)
     {
@@ -285,7 +302,13 @@ class Process
         $this->generateSyncKey($result, $first);
 
         $this->vbot->myself->init($result['User']);
+
         $this->vbot->loginSuccessObserver->trigger();
+
+        if ($result['ContactList']) {
+            $this->vbot->contactFactory->store($result['ContactList']);
+        }
+
         $this->vbot->contactFactory->fetchAll();
     }
 
@@ -305,4 +328,20 @@ class Process
 
         $this->vbot->config['server.syncKeyStr'] = implode('|', $syncKey);
     }
+
+
+    /**
+     * 格式化获取到的群组数据，只保留群的UserNmae 跟 NickName
+     * @param array $groups
+     * @return array
+     */
+//    public function formatGroupsInfo(array &$groups)
+//    {
+//        $list = [];
+//        foreach($groups as $key => $item) {
+//            $list[] = ['UserName' => $key, 'NickName' => $item['NickName']];
+//        }
+//
+//        return $list;
+//    }
 }
