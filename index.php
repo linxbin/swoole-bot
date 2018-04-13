@@ -62,7 +62,7 @@
         //向服务器发送数据
         var data = {
             'type' : 'start',
-            'content' : 'group username is send '
+            'content' : groups.options[groups.selectedIndex].value
         };
         websocket.send(JSON.stringify(data));
     }
