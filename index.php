@@ -1,7 +1,3 @@
-<!--<html>-->
-
-<!--<a href="client.php"> 登录</a>-->
-<!--</html>-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,7 +15,7 @@
     <select style="width:200px" name="groups" id="groups"></select>
 </div>
 <div>
-    <input type="submit" value="开启游戏" onclick="start()">
+    <input type="submit" value="开启发言" onclick="start()">
 </div>
 </body>
 <script>
@@ -86,7 +82,7 @@
             img.src = 'http://qr.liantu.com/api.php?text=' + result.data;
         }
         if (result.type == 'groups') {
-            console.log(result);
+            msg.innerHTML = '登录成功！';
             var groupsData = result.data;
             for (var i = 0; i < groupsData.length; i++) {
                 var op = document.createElement("option");

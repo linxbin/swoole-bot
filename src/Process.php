@@ -10,6 +10,7 @@
 namespace Kcloze\Bot;
 
 use Hanson\Vbot\Foundation\Vbot;
+use Hanson\Vbot\Message\Text;
 
 class Process
 {
@@ -24,20 +25,22 @@ class Process
     private $fd;
 
     public function __construct($config) {
-        $this->config = $config;
-        $this->logger = new Logs($config['path']);
-        $this->vbot  = new Vbot($this->config);
-        $this->server = new \swoole_websocket_server("0.0.0.0", 9501);
+        $this->config   = $config;
+        $this->logger   = new Logs($config['path']);
+        $this->vbot     = new Vbot($this->config);
+        $this->server   = new \swoole_websocket_server("0.0.0.0", 9501);
     }
 
     public function onMessage(\swoole_server $server, \swoole_websocket_frame  $frame) {
+
         $this->fd = $frame->fd;
         $receiveData = json_decode($frame->data,true);
         if($receiveData['type'] == 'login') {
             $this->reserveBot($this->i++);
         }
         if($receiveData['type'] == 'start') {
-            $this->vbot->console->log('开群啦，我要持续发言');
+            $this->vbot->config['message.switch'] = 'on';
+            $this->vbot->config['group.username'] = $receiveData['content'];
         }
 
     }
@@ -89,8 +92,7 @@ class Process
      */
     //创建独立进程
     public function reserveBot($workNum) {
-        $self = $this;
-        $reserveProcess = new \Swoole\Process(function () use ($self, $workNum) {
+        $reserveProcess = new \Swoole\Process(function () use ($workNum) {
             $uuid = $this->getUuid();
             $url = 'https://login.weixin.qq.com/l/'. $uuid;
             $this->send($url, 'url');
@@ -98,9 +100,12 @@ class Process
             $this->getLogin();
 
             // 发送消息，收到消息时触发
-            $this->vbot->messageHandler->setHandler(function ($message) {
-                $reply=new Reply($message, $this->config);
-                $reply->send();
+            $this->vbot->messageHandler->setCustomHandler(function(){
+                if($this->vbot->config['message.switch'] == 'on'){
+                    if (date('s') == 5) {
+                        Text::send($this->vbot->config['group.username'], '大家好');
+                    }
+                }
             });
 
             // 获取用户群数据，并推送到前端
@@ -122,7 +127,6 @@ class Process
         $this->setProcessName('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
         $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
-//        $this->registSignal($this->workers);
     }
 
     // 监控子进程
