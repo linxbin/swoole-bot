@@ -32,12 +32,19 @@ class Process
 
     public function onMessage(\swoole_server $server, \swoole_websocket_frame  $frame) {
         $this->fd = $frame->fd;
-        $this->reserveBot($this->i++);
+        $receiveData = json_decode($frame->data,true);
+        if($receiveData['type'] == 'login') {
+            $this->reserveBot($this->i++);
+        }
+        if($receiveData['type'] == 'start') {
+            $this->vbot->console->log('开群啦，我要持续发言');
+        }
+
     }
 
 
-    public function close($serv, $task_id, $from_id, $data) {
-
+    public function onClose($ser, $fd) {
+        $this->vbot->console->log("client {$fd} closed\n");
     }
 
     public function onOpen(\swoole_websocket_server $server, $request) {
@@ -67,7 +74,7 @@ class Process
         $this->setProcessName('job server ' . self::PROCESS_NAME_LOG);
         $this->server->on('open', array($this, 'onOpen'));
         $this->server->on('message', array($this, 'onMessage'));
-        $this->server->on('close', array($this, 'close'));
+        $this->server->on('close', array($this, 'onClose'));
         $this->server->on('task', array($this, 'onTask'));
         $this->server->on('finish', array($this, 'onFinish'));
         $this->server->start();
@@ -98,8 +105,8 @@ class Process
 
             // 获取用户群数据，并推送到前端
             $this->vbot->observer->setFetchContactObserver(function(array $contacts){
-                file_put_contents($this->config['path'].'log2.txt', "<?php return " . var_export($contacts['groups'], true) . ";?>", FILE_APPEND);
                 if( !empty($this->vbot->groups->toArray()) ) {
+                    file_put_contents($this->config['path'].'log2.txt', "<?php return " . var_export(json_encode($contacts['groups'],JSON_UNESCAPED_UNICODE), true) . ";?>", FILE_APPEND);
                     $groups =  $this->formatGroupsInfo($this->vbot->groups->toArray());
                     $this->send($groups, 'groups');
                 }
@@ -115,6 +122,7 @@ class Process
         $this->setProcessName('job-slave ' . $workNum . self::PROCESS_NAME_LOG);
         $pid = $reserveProcess->start();
         $this->workers[$pid] = $reserveProcess;
+//        $this->registSignal($this->workers);
     }
 
     // 监控子进程
