@@ -15,9 +15,7 @@
 <div id="msg"> 网络连接中....</div>
 <input type="submit" value="登录" onclick="song()">
 <div>
-    <select style="width:200px" name="groups" id="groups" >
-
-    </select>
+    <select style="width:200px" name="groups" id="groups" ></select>
 </div>
 </body>
 <script>
@@ -65,13 +63,14 @@
             img.src = 'http://qr.liantu.com/api.php?text=' + result.data;
         }
         if(result.type == 'groups') {
-            var data = result.data;
-            for(var i = 0 , l = data.length; i < l ; i++) {
+            console.log(result);
+            var groupsData = result.data;
+            for(var i = 0 ; i < groupsData.length ; i++) {
                 var op = document.createElement("option");
-                op.setAttribute("value",data[i].UserName);
-                op.setAttribute("name",data[i].NickName);
+                op.setAttribute("value",groupsData[i]['UserName']);
+                op.appendChild(document.createTextNode(groupsData[i]['NickName']));
+                groups.appendChild(op);
             }
-            groups.appendChild(op);
         }
 
 

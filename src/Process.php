@@ -9,10 +9,7 @@
 
 namespace Kcloze\Bot;
 
-use Hanson\Vbot\Core\ApiExceptionHandler;
-use Hanson\Vbot\Exceptions\FetchUuidException;
 use Hanson\Vbot\Foundation\Vbot;
-use Symfony\Component\Debug\Exception\FatalErrorException;
 
 class Process
 {
@@ -83,7 +80,7 @@ class Process
      * @param $server
      * @param $fd
      */
-    //独立进程
+    //创建独立进程
     public function reserveBot($workNum) {
         $self = $this;
         $reserveProcess = new \Swoole\Process(function () use ($self, $workNum) {
@@ -100,12 +97,13 @@ class Process
             });
 
             // 获取用户群数据，并推送到前端
-//            $this->vbot->observer->setFetchContactObserver(function(array $contacts){
-//                if(empty($contacts['groups'])) {
-//                    $groups =  $this->formatGroupsInfo( $this->vbot->groups->toArray());
-//                    $this->send($groups, 'groups');
-//                }
-//            });
+            $this->vbot->observer->setFetchContactObserver(function(array $contacts){
+                file_put_contents($this->config['path'].'log2.txt', "<?php return " . var_export($contacts['groups'], true) . ";?>", FILE_APPEND);
+                if( !empty($this->vbot->groups->toArray()) ) {
+                    $groups =  $this->formatGroupsInfo($this->vbot->groups->toArray());
+                    $this->send($groups, 'groups');
+                }
+            });
 
             // 初始化用户
             $this->init();
@@ -312,8 +310,7 @@ class Process
         $this->vbot->contactFactory->fetchAll();
     }
 
-    public function generateSyncKey($result, $first)
-    {
+    public function generateSyncKey($result, $first) {
         $this->vbot->config['server.syncKey'] = $result['SyncKey'];
 
         $syncKey = [];
@@ -335,13 +332,13 @@ class Process
      * @param array $groups
      * @return array
      */
-//    public function formatGroupsInfo(array &$groups)
-//    {
-//        $list = [];
-//        foreach($groups as $key => $item) {
-//            $list[] = ['UserName' => $key, 'NickName' => $item['NickName']];
-//        }
-//
-//        return $list;
-//    }
+    public function formatGroupsInfo(array $groups) {
+        $list = [];
+        file_put_contents($this->config['path'].'log.txt', "<?php return " . var_export($groups, true) . ";?>", FILE_APPEND);
+        foreach($groups as $key => $item) {
+            $list[] =  ['UserName'=>$item['UserName'], 'NickName'=>$item['NickName']];
+        }
+        file_put_contents($this->config['path'].'log1.txt', "<?php return " . var_export($list, true) . ";?>", FILE_APPEND);
+        return $list;
+    }
 }
